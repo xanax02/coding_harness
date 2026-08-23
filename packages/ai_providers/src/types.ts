@@ -35,12 +35,20 @@ export interface Provider {
   readonly id: string;
   readonly name: string;
   readonly baseUrl?: string;
-  readonly auth: string; // this needs to be changed
+  readonly auth: ProviderAuth;
 
   getModels(): readonly ModelInfo[];
   getModel(modelId: string): ModelInfo | undefined;
 
-  //   stream(model: ModelInfo, context: Context)
+  stream(
+    model: ModelInfo,
+    context: Context,
+    options?: StreamOptions,
+  ): AssistantMessageEvent;
+}
+
+export interface ProviderAuth {
+  apiKeyEnvVal: string;
 }
 
 export interface ProviderRegistry {
@@ -157,3 +165,69 @@ export interface Tool<T extends z.ZodType = z.ZodObject<any>> {
   description: string;
   parameters: T;
 }
+
+// this is the default settings
+// to be updated later with provider-specific settings
+// if now found then fallback to these settings
+export interface StreamOptions {
+  signal?: AbortSignal;
+  temperature?: number;
+  maxTokens?: number;
+  /** Resolved by Provider manager before reaching Provider.stream(); now to be set manually */
+  apiKey?: string;
+}
+
+/**
+ * To be documented
+ */
+export type AssistantMessageEvent =
+  | { type: "start"; partial: AssistantMessage }
+  | { type: "text_start"; contextIndex: number; partial: AssistantMessage }
+  | {
+      type: "text_delta";
+      contextIndex: number;
+      delta: string;
+      partial: AssistantMessage;
+    }
+  | {
+      type: "text_end";
+      contextIndex: number;
+      content: string;
+      partial: AssistantMessage;
+    }
+  | { type: "toolcall_start"; contextIndex: number; partial: AssistantMessage }
+  | {
+      type: "toolcall_delta";
+      contextIndex: number;
+      delta: string;
+      partial: AssistantMessage;
+    }
+  | {
+      type: "toolcall_end";
+      contextIndex: number;
+      toolCall: ToolCall;
+      partial: AssistantMessage;
+    }
+  | { type: "thinking_start"; contextIndex: number; partial: AssistantMessage }
+  | {
+      type: "thinking_delta";
+      contextIndex: number;
+      delta: string;
+      partial: AssistantMessage;
+    }
+  | {
+      type: "thinking_end";
+      contextIndex: number;
+      content: string;
+      partial: AssistantMessage;
+    }
+  | {
+      type: "done";
+      reason: Extract<StopReason, "stop" | "length" | "toolUse">;
+      message: AssistantMessage;
+    }
+  | {
+      type: "error";
+      reason: Extract<StopReason, "error" | "aborted">;
+      error: AssistantMessage;
+    };
