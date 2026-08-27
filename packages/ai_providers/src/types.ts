@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AssistantMessageEventStream } from "./utils/event-stream";
 
 export type KnownProvider = "openai" | "anthropic" | "google";
 export type ProviderId = KnownProvider | string;
@@ -44,23 +45,37 @@ export interface Provider {
     model: ModelInfo,
     context: Context,
     options?: StreamOptions,
-  ): AssistantMessageEvent;
+  ): AssistantMessageEventStream;
 }
 
 export interface ProviderAuth {
-  apiKeyEnvVal: string;
+  apiKeyEnvVar: string;
 }
 
 export interface ProviderRegistry {
   setProvider(provider: Provider): void;
   deleteProvider(id: string): void;
-  clearProviders(): void;
 
   getProviders(): readonly Provider[];
   getProvider(id: string): Provider | undefined;
 
-  getModels(prividerId: string): readonly ModelInfo[];
-  // setModel(providerId: string)
+  getModels(providerId: string): readonly ModelInfo[];
+  getModel(providerId: string, modelId: string): ModelInfo | undefined;
+
+  /** Explicit override; takes precedence over the provider's env var */
+  setApiKey(providerId: string, apiKey: string): void;
+  hasApiKey(providerId: string): boolean;
+
+  stream(
+    model: ModelInfo,
+    context: Context,
+    options?: StreamOptions,
+  ): AssistantMessageEventStream;
+  complete(
+    model: ModelInfo,
+    context: Context,
+    options?: StreamOptions,
+  ): Promise<AssistantMessage>;
 }
 
 /**
@@ -223,11 +238,11 @@ export type AssistantMessageEvent =
     }
   | {
       type: "done";
-      reason: Extract<StopReason, "stop" | "length" | "toolUse">;
+      reason?: Extract<StopReason, "stop" | "length" | "toolUse">;
       message: AssistantMessage;
     }
   | {
       type: "error";
-      reason: Extract<StopReason, "error" | "aborted">;
+      reason?: Extract<StopReason, "error" | "aborted">;
       error: AssistantMessage;
     };
