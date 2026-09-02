@@ -1,6 +1,5 @@
 import {
   AssistantMessage,
-  AssistantMessageEvent,
   Context,
   ModelInfo,
   Provider,
@@ -101,6 +100,14 @@ export class ProviderManager implements ProviderRegistry {
     }
 
     return provider.stream(model, context, options);
+  }
+
+  complete(
+    model: ModelInfo,
+    context: Context,
+    options?: StreamOptions,
+  ): Promise<AssistantMessage> {
+    return this.stream(model, context, options).result();
   }
 }
 
