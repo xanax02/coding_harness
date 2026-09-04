@@ -89,7 +89,7 @@ export class ProviderManager implements ProviderRegistry {
           cacheRead: 0,
           cacheWrite: 0,
           totalTokens: 0,
-          cost: { input: 0, output: 0, total: 0, cacheWrite: 0, cahcheRead: 0 },
+          cost: { input: 0, output: 0, total: 0, cacheWrite: 0, cacheRead: 0 },
         },
         stopReason: "error",
         errorMessage: `API key for provider ${model.provider} not found`,

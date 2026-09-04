@@ -160,7 +160,7 @@ export interface Usage {
   cost: {
     input: number;
     output: number;
-    cahcheRead: number;
+    cacheRead: number;
     cacheWrite: number;
     total: number;
   };
@@ -197,42 +197,42 @@ export interface StreamOptions {
  */
 export type AssistantMessageEvent =
   | { type: "start"; partial: AssistantMessage }
-  | { type: "text_start"; contextIndex: number; partial: AssistantMessage }
+  | { type: "text_start"; contentIndex: number; partial: AssistantMessage }
   | {
       type: "text_delta";
-      contextIndex: number;
+      contentIndex: number;
       delta: string;
       partial: AssistantMessage;
     }
   | {
       type: "text_end";
-      contextIndex: number;
+      contentIndex: number;
       content: string;
       partial: AssistantMessage;
     }
-  | { type: "toolcall_start"; contextIndex: number; partial: AssistantMessage }
+  | { type: "toolcall_start"; contentIndex: number; partial: AssistantMessage }
   | {
       type: "toolcall_delta";
-      contextIndex: number;
+      contentIndex: number;
       delta: string;
       partial: AssistantMessage;
     }
   | {
       type: "toolcall_end";
-      contextIndex: number;
+      contentIndex: number;
       toolCall: ToolCall;
       partial: AssistantMessage;
     }
-  | { type: "thinking_start"; contextIndex: number; partial: AssistantMessage }
+  | { type: "thinking_start"; contentIndex: number; partial: AssistantMessage }
   | {
       type: "thinking_delta";
-      contextIndex: number;
+      contentIndex: number;
       delta: string;
       partial: AssistantMessage;
     }
   | {
       type: "thinking_end";
-      contextIndex: number;
+      contentIndex: number;
       content: string;
       partial: AssistantMessage;
     }

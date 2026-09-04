@@ -35,7 +35,7 @@ export class AssistantMessageEventStream implements AsyncIterable<AssistantMessa
     }
   }
 
-  end(result: AssistantMessage): void {
+  end(result?: AssistantMessage): void {
     this.done = true;
     if (result !== undefined) {
       this.resolveFinalResult(result);
