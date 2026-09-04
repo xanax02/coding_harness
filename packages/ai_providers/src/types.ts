@@ -27,6 +27,8 @@ export interface ModelInfo {
   contextWindow: number;
   maxTokens: number;
   cost: ModelCost;
+
+  /** TODO: add compatibilities like longCacheRetention, etc. */
 }
 
 /**
