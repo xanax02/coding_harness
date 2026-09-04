@@ -99,7 +99,7 @@ export class ProviderManager implements ProviderRegistry {
       return stream;
     }
 
-    return provider.stream(model, context, options);
+    return provider.stream(model, context, { ...options, apiKey });
   }
 
   complete(
