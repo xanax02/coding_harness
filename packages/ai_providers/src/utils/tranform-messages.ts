@@ -5,6 +5,7 @@ import {
   ModelInfo,
   TextContent,
   ToolCall,
+  ToolResultMessage,
 } from "../types";
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER =
@@ -128,7 +129,72 @@ export function transformMessages(
     return msg;
   });
 
-  return transformedMessages;
+  //second pass - handling orphaned tool calls
+  // it will add synthetic tool results for tool calls that don't have a corresponding tool result
+  const result: Message[] = [];
+  let pendingToolCalls: ToolCall[] = [];
+  let existingToolResultIds = new Set<string>();
+  const insertSyntheticToolResults = () => {
+    if (pendingToolCalls.length > 0) {
+      for (const tc of pendingToolCalls) {
+        if (!existingToolResultIds.has(tc.id)) {
+          result.push({
+            role: "toolResult",
+            toolCallId: tc.id,
+            toolName: tc.name,
+            content: [{ type: "text", text: "No result provided" }],
+            isError: true,
+            timestamp: Date.now(),
+          } as ToolResultMessage);
+        }
+      }
+      pendingToolCalls = [];
+      existingToolResultIds = new Set();
+    }
+  };
+
+  for (let i = 0; i < transformedMessages.length; i++) {
+    const msg = transformedMessages[i];
+
+    if (msg.role === "assistant") {
+      // If we have pending orphaned tool calls from a previous assistant, insert synthetic results now
+      insertSyntheticToolResults();
+
+      // Skip errored/aborted assistant messages entirely.
+      const assistantMsg = msg as AssistantMessage;
+      if (
+        assistantMsg.stopReason === "error" ||
+        assistantMsg.stopReason === "aborted"
+      ) {
+        continue;
+      }
+
+      // Track tool calls from this assistant message
+      const toolCalls = assistantMsg.content.filter(
+        (b) => b.type === "toolCall",
+      ) as ToolCall[];
+      if (toolCalls.length > 0) {
+        pendingToolCalls = toolCalls;
+        existingToolResultIds = new Set();
+      }
+
+      result.push(msg);
+    } else if (msg.role === "toolResult") {
+      existingToolResultIds.add(msg.toolCallId);
+      result.push(msg);
+    } else if (msg.role === "user") {
+      // User message interrupts tool flow - insert synthetic results for orphaned calls
+      insertSyntheticToolResults();
+      result.push(msg);
+    } else {
+      result.push(msg);
+    }
+  }
+
+  // If the conversation ends with unresolved tool calls, synthesize results now.
+  insertSyntheticToolResults();
+
+  return result;
 }
 
 export function filterUnsupportedImages(messages: Message[], model: ModelInfo) {
