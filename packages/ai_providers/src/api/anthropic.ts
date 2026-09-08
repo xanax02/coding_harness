@@ -75,7 +75,30 @@ export const buildParams = (
   context: Context,
   options: AnthropicOptions,
 ): MessageCreateParamsStreaming => {
-  return {} as unknown as MessageCreateParamsStreaming;
+  //base params
+  const params: MessageCreateParamsStreaming = {
+    model: model.id,
+    max_tokens: options.maxTokens ?? model.maxTokens,
+    stream: true,
+    messages: [],
+  };
+
+  //if systemPrompt is present in context, add it to params
+  if (context.systemPrompt) {
+    params.system = [
+      {
+        type: "text",
+        text: context.systemPrompt,
+      },
+    ];
+  }
+
+  //if tools are present in context, add them to params
+  // if (context.tools && context.tools.length > 0) {
+  //   params.tools = context.tools;
+  // }
+
+  return params;
 };
 
 // const client = new Anthropic();

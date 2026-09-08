@@ -136,6 +136,11 @@ export interface ThinkingContent {
    * thinking content is not tempered with
    */
   thinkingSignature?: string;
+  /**
+   * When thinking content is redacted by provider due to safety reasons
+   * The opaque encrypted payload is stored in thinkingSignature
+   */
+  redacted?: boolean;
 }
 
 export interface ImageContent {
@@ -149,7 +154,7 @@ export interface ToolCall {
   id: string;
   name: string;
   arguments: Record<string, any>;
-  thoughtSignature?: string;
+  thoughtSignature?: string; //google specific can be removed for now
 }
 
 export interface Usage {
