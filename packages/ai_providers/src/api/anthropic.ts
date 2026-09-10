@@ -57,7 +57,7 @@ export type AnthropicThinkingDisplay = "summarized" | "omitted";
 export interface AnthropicOptions extends StreamOptions {
   thinkingEnabled?: boolean;
   //for older models
-  thikingBudgetToken?: number;
+  thinkingBudgetToken?: number;
 
   /**
    * Effort level for adaptive thinking models.
@@ -189,7 +189,42 @@ export const buildParams = (
   }
 
   //configure thiking mode
+  // TODO: add logic to handle models compat for adaptive and extended thinking
+  // currently this only supports adaptive type.
   if (model.reasoning) {
+    if (options?.thinkingEnabled) {
+      // Default to "summarized"
+      const display: AnthropicThinkingDisplay =
+        options.thinkingDisplay ?? "summarized";
+      // Adaptive thinking: Claude decides when and how much to think.
+      params.thinking = { type: "adaptive", display };
+      if (options.effort) {
+        // The Anthropic SDK types can lag newly supported effort values such as "xhigh".
+        params.output_config =
+          options.effort === "xhigh"
+            ? ({ effort: options.effort } as unknown as NonNullable<
+                MessageCreateParamsStreaming["output_config"]
+              >)
+            : { effort: options.effort };
+      }
+    } else if (options?.thinkingEnabled === false) {
+      params.thinking = { type: "disabled" };
+    }
+  }
+
+  if (options?.metaData) {
+    const userId = options.metaData.user_id;
+    if (typeof userId === "string") {
+      params.metadata = { user_id: userId };
+    }
+  }
+
+  if (options?.toolChoice) {
+    if (typeof options.toolChoice === "string") {
+      params.tool_choice = { type: options.toolChoice };
+    } else {
+      params.tool_choice = options.toolChoice;
+    }
   }
 
   return params;

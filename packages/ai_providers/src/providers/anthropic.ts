@@ -60,6 +60,17 @@ const ANTHROPIC_MODELS: readonly ModelInfo[] = [
     baseUrl: ANTHROPIC_BASE_URL,
     provider: "anthropic",
     input: ["text", "image"],
+    /**
+     * for now making this false as this doesnot support adaptive thinking and there is no
+     * logic of checking compatiblity yet and settings its thinking type
+     * in future compat field will be added to modelInfo which for anthropic have forceAdaptiveThinking
+     * boolean field to handle thiking type
+     * as of now only adaptive thiking is being used
+     * and this model does not support it
+     *
+     * this is handled here as well as when passing the model
+     * thikingEnable field will be false also, if it supports that
+     */
     reasoning: true,
     contextWindow: 200_000,
     maxTokens: 64_000,
