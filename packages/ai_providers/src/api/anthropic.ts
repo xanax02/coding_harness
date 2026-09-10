@@ -11,17 +11,79 @@ import {
   ModelInfo,
   StreamOptions,
   TextContent,
+  Tool,
   ToolResultMessage,
 } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { Anthropic } from "@anthropic-ai/sdk";
 import { transformMessages } from "../utils/tranform-messages";
 import { sanitizeSurrogates } from "../utils/sanitize-unicodes";
+import { zodToJsonSchema } from "zod-to-json-schema";
+
+const claudeCodeTools = [
+  "Read",
+  "Write",
+  "Edit",
+  "Bash",
+  "Grep",
+  "EnterPlanMode",
+  "ExitPlanMode",
+  "Skill",
+  "TodoWrite",
+  "WebFetch",
+  "WebSearch",
+];
+
+// Create a lookup map for case-insensitive tool name matching
+const ccToolLookup = new Map(claudeCodeTools.map((t) => [t.toLowerCase(), t]));
+// Helper functions to convert between Claude Code tool names and standard tool names
+const toClaudeCodeName = (name: string) =>
+  ccToolLookup.get(name.toLowerCase()) ?? name;
+const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
+  if (tools && tools.length > 0) {
+    const lowerName = name.toLowerCase();
+    const matchedTool = tools.find(
+      (tool) => tool.name.toLowerCase() === lowerName,
+    );
+    if (matchedTool) return matchedTool.name;
+  }
+  return name;
+};
+
+export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export type AnthropicThinkingDisplay = "summarized" | "omitted";
 
 export interface AnthropicOptions extends StreamOptions {
+  thinkingEnabled?: boolean;
+  //for older models
   thikingBudgetToken?: number;
 
-  // TODO: Add more Anthropic-specific options (thinkingEnabled, efforts, etc.)
+  /**
+   * Effort level for adaptive thinking models.
+   * Controls how much thinking Claude allocates:
+   * - "max": Always thinks with no constraints (Opus 4.6 only)
+   * - "xhigh": Highest reasoning level (Opus 4.7+, Fable 5)
+   * - "high": Always thinks, deep reasoning
+   * - "medium": Moderate thinking, may skip for simple queries
+   * - "low": Minimal thinking, skips for simple tasks
+   * Ignored for older models.
+   */
+  effort?: AnthropicEffort;
+  /**
+   * Controls how thinking content is returned in API responses.
+   * - "summarized": Thinking blocks contain summarized thinking text.
+   * - "omitted": Thinking blocks return an empty thinking field; the encrypted
+   *   signature still travels back for multi-turn continuity. Use for faster
+   *   time-to-first-text-token when your UI does not surface thinking.
+   */
+  thinkingDisplay?: AnthropicThinkingDisplay;
+  /**
+   * Anthropic tool choice behavior. String values map to Anthropic's built-in
+   * choices; `{ type: "tool", name }` forces a specific tool.
+   * Default: omitted (Anthropic default behavior, currently equivalent to auto).
+   */
+  toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
 }
 
 async function fetchStream(
@@ -96,12 +158,14 @@ export const buildParams = (
     normalizeToolCallId,
   );
 
+  const anthropicCompatMessages = convertMessages(transformedMessages);
+
   //base params
   const params: MessageCreateParamsStreaming = {
     model: model.id,
     max_tokens: options.maxTokens ?? model.maxTokens,
     stream: true,
-    messages: [],
+    messages: anthropicCompatMessages,
   };
 
   //if systemPrompt is present in context, add it to params
@@ -114,10 +178,19 @@ export const buildParams = (
     ];
   }
 
-  //if tools are present in context, add them to params
-  // if (context.tools && context.tools.length > 0) {
-  //   params.tools = context.tools;
-  // }
+  // if tools are present in context, add them to params
+  if (context.tools && context.tools.length > 0) {
+    params.tools = convertTools(context.tools);
+  }
+
+  // Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
+  if (options?.temperature !== undefined) {
+    params.temperature = options.temperature;
+  }
+
+  //configure thiking mode
+  if (model.reasoning) {
+  }
 
   return params;
 };
@@ -337,6 +410,24 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
   }
 
   return blocks;
+}
+
+function convertTools(tools: Tool[]): Anthropic.Messages.Tool[] {
+  if (!tools) return [];
+
+  return tools.map((tool, index) => {
+    const schema = zodToJsonSchema(tool.parameters as any);
+
+    return {
+      name: toClaudeCodeName(tool.name),
+      description: tool.description,
+      input_schema: {
+        type: "object",
+        properties: (schema as any).properties ?? {},
+        required: (schema as any).required ?? [],
+      },
+    };
+  });
 }
 
 // const client = new Anthropic();

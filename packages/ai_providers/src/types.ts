@@ -197,6 +197,11 @@ export interface StreamOptions {
   maxTokens?: number;
   /** Resolved by Provider manager before reaching Provider.stream(); now to be set manually */
   apiKey?: string;
+
+  metaData?: Record<string, unknown>;
+
+  // TODO: add cache rentention config for better model performance
+  // and enabling caching for tokens optimization
 }
 
 /**
