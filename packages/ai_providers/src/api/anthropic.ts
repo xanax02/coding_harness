@@ -2,6 +2,7 @@ import {
   ContentBlockParam,
   MessageCreateParamsStreaming,
   MessageParam,
+  RawMessageStreamEvent,
 } from "@anthropic-ai/sdk/resources";
 import {
   AssistantMessage,
@@ -19,6 +20,7 @@ import { Anthropic } from "@anthropic-ai/sdk";
 import { transformMessages } from "../utils/tranform-messages";
 import { sanitizeSurrogates } from "../utils/sanitize-unicodes";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { ServerSentEvent } from "@anthropic-ai/sdk/core/streaming.mjs";
 
 const claudeCodeTools = [
   "Read",
@@ -84,6 +86,201 @@ export interface AnthropicOptions extends StreamOptions {
    * Default: omitted (Anthropic default behavior, currently equivalent to auto).
    */
   toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
+}
+
+interface SseDecoderState {
+  event: string | null;
+  data: string[];
+  raw: string[];
+}
+
+///////////// sse handling ///////////////
+
+/**
+ * sse handling flow
+ * using create.onResponse will return http response
+ *
+ * response.body is sent to iterateSSE
+ * it will be binary readable stream having .read() with lock
+ * the value is read from the event using .read() and then decoded
+ * while decoding the
+ * it will will extract the line based on \n\n or \r\n delimiter
+ *  if no line break it will add the next chunk to buffer and then send to extract line
+ * the result will be something like {line: "data:...", rest: "..."}
+ * line is passed to decodeSseLine and rest becomes the buffer and again send to extract line
+ *
+ * decodeSseLine will parse the line and extract the event type and data and return ServerSentEvent typed object.
+ * the line will be text like "event: message_start"
+ * "data: {"type":"message_start",...}"
+ * ""
+ * decodeSseLine will only return the ServerSentEvent object when the line break delimiter arrives. or when the event is done.
+ *
+ * event and data will get stored in the state object and when the line break delimiter arrives, it will flush the event.
+ *
+ * and then iterateSSE will yield the ServerSentEvent object.
+ */
+
+/**
+ * Iterates over the SSE stream and yields ServerSentEvent objects.
+ * @param body The readable stream to iterate over.
+ * @param signal An optional abort signal to stop the iteration.
+ * @yields ServerSentEvent objects.
+ */
+async function* iterateSSE(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<ServerSentEvent> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  //state will hold the events data
+  // and when the line break delimiter arrives, it will flush the event.
+  const state: SseDecoderState = { event: null, data: [], raw: [] };
+  let buffer = "";
+
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw new Error("Request aborted");
+      }
+
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      let extractedLine = extractLine(buffer);
+
+      while (extractedLine) {
+        buffer = extractedLine.rest;
+        const event = decodeSseLine(extractedLine.line, state);
+
+        if (event) {
+          yield event;
+        }
+        extractedLine = extractLine(buffer);
+      }
+    }
+
+    // if any buffer left, decode it and extract lines especially for the last event
+    // so that it doesnot get corrupted.
+    buffer += decoder.decode();
+    let extractedLine = extractLine(buffer);
+    while (extractedLine) {
+      buffer = extractedLine.rest;
+      const event = decodeSseLine(extractedLine.line, state);
+      if (event) {
+        yield event;
+      }
+      extractedLine = extractLine(buffer);
+    }
+
+    //if extractedLine returns null due to no line break above,
+    //it will stiff be in buffer to handle.
+    if (buffer.length > 0) {
+      const event = decodeSseLine(buffer, state);
+      if (event) {
+        yield event;
+      }
+    }
+
+    //flush any remaining event
+    const event = flushSseEvent(state);
+    if (event) {
+      yield event;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function flushSseEvent(state: SseDecoderState): ServerSentEvent | null {
+  if (!state.event && state.data.length === 0) {
+    return null;
+  }
+
+  const event: ServerSentEvent = {
+    event: state.event,
+    data: state.data.join("\n"),
+    raw: [...state.raw],
+  };
+  state.event = null;
+  state.data = [];
+  state.raw = [];
+  return event;
+}
+
+function decodeSseLine(
+  line: string,
+  state: SseDecoderState,
+): ServerSentEvent | null {
+  if (line === "") {
+    return flushSseEvent(state);
+  }
+
+  state.raw.push(line);
+  // if line is a comment remove it
+  if (line.startsWith(":")) {
+    return null;
+  }
+
+  const delimiterIndex = line.indexOf(":");
+  const fieldName =
+    delimiterIndex === -1 ? line : line.slice(0, delimiterIndex);
+  let value = delimiterIndex === -1 ? "" : line.slice(delimiterIndex + 1);
+
+  if (fieldName === "event") {
+    state.event = value;
+  } else if (fieldName === "data") {
+    state.data.push(value);
+  }
+
+  return null;
+}
+
+/**
+ * Extracts a single line from the buffer and returns it along with the remaining buffer.
+ * @param text The buffer to extract from.
+ * @returns An object containing the extracted line and the remaining buffer, or null if no line is found.
+ */
+const extractLine = (text: string): { line: string; rest: string } | null => {
+  const lineBreakIndex = nextLineBreakIndex(text);
+  if (lineBreakIndex === -1) {
+    return null;
+  }
+
+  let nextIndex = lineBreakIndex + 1;
+  if (text[lineBreakIndex] === "\r" && text[nextIndex] === "\n") {
+    nextIndex += 1;
+  }
+
+  return {
+    line: text.slice(0, lineBreakIndex),
+    rest: text.slice(nextIndex),
+  };
+};
+
+function nextLineBreakIndex(text: string): number {
+  const carriageReturnIndex = text.indexOf("\r");
+  const newlineIndex = text.indexOf("\n");
+  if (carriageReturnIndex === -1) {
+    return newlineIndex;
+  }
+  if (newlineIndex === -1) {
+    return carriageReturnIndex;
+  }
+  return Math.min(carriageReturnIndex, newlineIndex);
+}
+
+async function* iterateAnthropicEvents(
+  response: Response,
+  signal?: AbortSignal,
+): AsyncGenerator<RawMessageStreamEvent> {
+  if (!response.body) {
+    throw new Error(
+      "Attempted to iterate over an Anthropic response with no body",
+    );
+  }
 }
 
 async function fetchStream(
