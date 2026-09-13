@@ -12,7 +12,9 @@ import {
   ModelInfo,
   StreamOptions,
   TextContent,
+  ThinkingContent,
   Tool,
+  ToolCall,
   ToolResultMessage,
 } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
@@ -21,6 +23,16 @@ import { transformMessages } from "../utils/tranform-messages";
 import { sanitizeSurrogates } from "../utils/sanitize-unicodes";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ServerSentEvent } from "@anthropic-ai/sdk/core/streaming.mjs";
+import { parseJsonWithRepair } from "../utils/json-helper";
+
+const ANTHROPIC_MESSAGE_EVENTS: ReadonlySet<string> = new Set([
+  "message_start",
+  "message_delta",
+  "message_stop",
+  "content_block_start",
+  "content_block_delta",
+  "content_block_stop",
+]);
 
 const claudeCodeTools = [
   "Read",
@@ -281,6 +293,39 @@ async function* iterateAnthropicEvents(
       "Attempted to iterate over an Anthropic response with no body",
     );
   }
+
+  //this is for the check if the stream is completed or not due to some error.
+  let sawMessageStart = false;
+  let sawMessageEnd = false;
+
+  for await (const sse of iterateSSE(response.body, signal)) {
+    if (sse.event === "error") {
+      throw new Error(sse.data);
+    }
+
+    if (!ANTHROPIC_MESSAGE_EVENTS.has(sse.event ?? "")) {
+      continue;
+    }
+
+    try {
+      const event = parseJsonWithRepair(sse.data);
+      if (event.type === "message_start") {
+        sawMessageStart = true;
+      } else if (event.type === "message_stop") {
+        sawMessageEnd = true;
+      }
+      yield event;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Could not parse Anthropic SSE event ${sse.event}: ${message}; data=${sse.data}; raw=${sse.raw.join("\\n")}`,
+      );
+    }
+  }
+
+  if (sawMessageStart && !sawMessageEnd) {
+    throw new Error("Anthropic stream ended before message_stop");
+  }
 }
 
 async function fetchStream(
@@ -320,12 +365,26 @@ async function fetchStream(
 
   try {
     const params = buildParams(model, context, options);
-    const response = await client.messages.create(params);
+    const requestOptions = {
+      ...(options?.signal ? { signal: options.signal } : {}),
+    };
+    const response = await client.messages
+      .create({ ...params, stream: true }, requestOptions)
+      .asResponse();
 
     stream.push({ type: "start", partial: output });
 
-    for await (const event of response) {
-      console.log(event);
+    type Block = (
+      | ThinkingContent
+      | TextContent
+      | (ToolCall & { partialJson: string })
+    ) & { index: number };
+    const blocks = output.content as Block[];
+
+    for await (const event of iterateAnthropicEvents(
+      response,
+      options?.signal,
+    )) {
     }
   } catch (error) {
     console.error(error);
