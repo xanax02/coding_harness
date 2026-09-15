@@ -1,7 +1,7 @@
-import { stream } from "../api/anthropic";
-import { createAntropicStream } from "../api/anthropic.lazy";
-import { ModelInfo, Provider } from "../types";
-import { AssistantMessageEventStream } from "../utils/event-stream";
+import { stream } from "../api/anthropic.js";
+import { createAntropicStream } from "../api/anthropic.lazy.js";
+import { Context, ModelInfo, Provider, StreamOptions } from "../types.js";
+import { AssistantMessageEventStream } from "../utils/event-stream.js";
 
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 
@@ -98,11 +98,11 @@ export function anthropicProvider(): Provider {
       return ANTHROPIC_MODELS;
     },
 
-    getModel(modelId): ModelInfo | undefined {
+    getModel(modelId: string): ModelInfo | undefined {
       return modelsIdMap.get(modelId);
     },
 
-    stream(model, context, options) {
+    stream(model: ModelInfo, context: Context, options?: StreamOptions): AssistantMessageEventStream {
       return createAntropicStream().stream(model, context, options);
     },
   };

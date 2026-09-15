@@ -3,8 +3,8 @@ import {
   AssistantMessageEvent,
   Context,
   ModelInfo,
-} from "../types";
-import { AssistantMessageEventStream } from "./event-stream";
+} from "../types.js";
+import { AssistantMessageEventStream } from "./event-stream.js";
 
 //piping lazyAsync stream to target stream that is actually used by caller
 export const forwardStream = async (

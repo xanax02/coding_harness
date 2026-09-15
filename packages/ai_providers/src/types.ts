@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AssistantMessageEventStream } from "./utils/event-stream";
+import { AssistantMessageEventStream } from "./utils/event-stream.js";
 
 export type KnownProvider = "openai" | "anthropic" | "google";
 export type ProviderId = KnownProvider | string;

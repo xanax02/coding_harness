@@ -6,7 +6,7 @@ import {
   TextContent,
   ToolCall,
   ToolResultMessage,
-} from "../types";
+} from "../types.js";
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER =
   "(image omitted: model does not support images)";
@@ -64,7 +64,7 @@ export function transformMessages(
         assistantMsg.model === model.id &&
         assistantMsg.provider === model.provider;
 
-      const transformedContent = assistantMsg.content.flatMap((block) => {
+      const transformedContent = assistantMsg.content.flatMap((block: AssistantMessage["content"][number]) => {
         if (block.type === "thinking") {
           // Drop redacted for cross-model messages
           if (block.redacted) {
@@ -171,7 +171,7 @@ export function transformMessages(
 
       // Track tool calls from this assistant message
       const toolCalls = assistantMsg.content.filter(
-        (b) => b.type === "toolCall",
+        (b: AssistantMessage["content"][number]) => b.type === "toolCall",
       ) as ToolCall[];
       if (toolCalls.length > 0) {
         pendingToolCalls = toolCalls;

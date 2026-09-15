@@ -1,4 +1,4 @@
-import { AssistantMessage, AssistantMessageEvent } from "../types";
+import { AssistantMessage, AssistantMessageEvent } from "../types.js";
 
 export class AssistantMessageEventStream implements AsyncIterable<AssistantMessageEvent> {
   private queue: AssistantMessageEvent[] = [];

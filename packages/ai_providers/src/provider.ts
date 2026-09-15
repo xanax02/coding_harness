@@ -7,8 +7,8 @@ import {
   ProviderRegistry,
   StreamOptions,
   Usage,
-} from "./types";
-import { AssistantMessageEventStream } from "./utils/event-stream";
+} from "./types.js";
+import { AssistantMessageEventStream } from "./utils/event-stream.js";
 
 /**
  * Simple provider registry with current provider selection

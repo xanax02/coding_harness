@@ -1,17 +1,26 @@
 {
-  "name": "coding_harness",
+  "name": "coding-harness-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
+  "description": "Coding Harness Monorepo",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "scripts": {
+    "clean": "npm run clean --workspaces --if-present",
+    "build": "npm --prefix packages/ai_providers run build && npm --prefix packages/agent run build",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "shx": "^0.3.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

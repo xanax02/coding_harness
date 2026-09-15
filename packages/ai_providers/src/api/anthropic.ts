@@ -3,8 +3,7 @@ import {
   MessageCreateParamsStreaming,
   MessageParam,
   RawMessageStreamEvent,
-  RefusalStopDetails,
-} from "@anthropic-ai/sdk/resources";
+} from "@anthropic-ai/sdk/resources/index.js";
 import {
   AssistantMessage,
   Context,
@@ -18,15 +17,20 @@ import {
   Tool,
   ToolCall,
   ToolResultMessage,
-} from "../types";
-import { AssistantMessageEventStream } from "../utils/event-stream";
+} from "../types.js";
+import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { Anthropic } from "@anthropic-ai/sdk";
-import { transformMessages } from "../utils/tranform-messages";
-import { sanitizeSurrogates } from "../utils/sanitize-unicodes";
+import { transformMessages } from "../utils/tranform-messages.js";
+import { sanitizeSurrogates } from "../utils/sanitize-unicodes.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { ServerSentEvent } from "@anthropic-ai/sdk/core/streaming.mjs";
-import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-helper";
-import { calculateCost } from "../provider";
+import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-helper.js";
+import { calculateCost } from "../provider.js";
+
+export interface ServerSentEvent {
+  event: string | null;
+  data: string;
+  raw: string[];
+}
 
 const ANTHROPIC_MESSAGE_EVENTS: ReadonlySet<string> = new Set([
   "message_start",
@@ -720,7 +724,7 @@ function convertMessages(
           });
         }
       } else {
-        const blocks: ContentBlockParam[] = msg.content.map((item) => {
+        const blocks: ContentBlockParam[] = msg.content.map((item: TextContent | ImageContent) => {
           if (item.type === "text") {
             return {
               type: "text",
@@ -933,8 +937,8 @@ function convertTools(tools: Tool[]): Anthropic.Messages.Tool[] {
 }
 
 function stopReasonMapper(
-  reason: Anthropic.Messages.StopReason | string,
-  stopDetails?: RefusalStopDetails | null,
+  reason: string,
+  stopDetails?: { explanation?: string | null } | null,
 ): { stopReason: StopReason; errorMessage?: string } {
   switch (reason) {
     case "end_turn":

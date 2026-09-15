@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "paths": {
+      "@coding-harness/ai-providers": ["./packages/ai_providers/src/index.ts"],
+      "@coding-harness/ai-providers/*": ["./packages/ai_providers/src/*"],
+      "@coding-harness/agent": ["./packages/agent/src/index.ts"],
+      "@coding-harness/agent/*": ["./packages/agent/src/*"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "packages/*/test/**/*"
+  ],
+  "exclude": [
+    "**/dist/**",
+    "**/node_modules/**"
+  ]
+}
