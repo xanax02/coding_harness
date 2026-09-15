@@ -22,7 +22,8 @@
     "test": "echo \"No test specified\""
   },
   "dependencies": {
-    "@coding-harness/ai-providers": "*"
+    "@coding-harness/ai-providers": "*",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
