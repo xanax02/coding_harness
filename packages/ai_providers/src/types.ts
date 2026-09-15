@@ -175,13 +175,7 @@ export interface Usage {
   };
 }
 
-export type StopReason =
-  | "pending"
-  | "stop"
-  | "length"
-  | "toolUse"
-  | "error"
-  | "aborted";
+export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 
 /////////// tools interfaces and types //////////////
 export interface Tool<T extends z.ZodType = z.ZodObject<any>> {

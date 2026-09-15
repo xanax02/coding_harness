@@ -6,6 +6,7 @@ import {
   ProviderId,
   ProviderRegistry,
   StreamOptions,
+  Usage,
 } from "./types";
 import { AssistantMessageEventStream } from "./utils/event-stream";
 
@@ -113,4 +114,16 @@ export class ProviderManager implements ProviderRegistry {
 
 export function createProviders() {
   return new ProviderManager();
+}
+
+export function calculateCost(model: ModelInfo, usage: Usage): Usage["cost"] {
+  // TODO: implement cost calculation based on model pricing
+  // This is a placeholder implementation
+  return {
+    input: 0,
+    output: 0,
+    total: 0,
+    cacheWrite: 0,
+    cacheRead: 0,
+  };
 }

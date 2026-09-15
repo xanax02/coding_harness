@@ -1,3 +1,5 @@
+import { parse as partialJsonParse } from "partial-json";
+
 const VALID_JSON_ESCAPES = new Set([
   '"',
   "\\",
@@ -99,5 +101,33 @@ export function parseJsonWithRepair(json: string): any {
       return JSON.parse(repairedJson);
     }
     throw error;
+  }
+}
+
+export function parseStreamingJson(partialJson: string | undefined) {
+  if (!partialJson || partialJson.trim() === "") {
+    return {};
+  }
+
+  //try to parse it first with parseJsonWithRepair
+  // if it fails, due to incomplete json then handling it in catch block
+  try {
+    return parseJsonWithRepair(partialJson);
+  } catch {
+    // try to parse structurally trucated/ partial JSON with partialParse
+    // if this contain unhandled broken escape character handling this will fail
+    // we'll handle that in catch;
+    try {
+      const result = partialJsonParse(partialJson);
+      return result ?? {};
+    } catch {
+      try {
+        const result = partialJsonParse(repairJson(partialJson));
+        return result ?? {};
+      } catch {
+        // fallback if nothing works
+        return {};
+      }
+    }
   }
 }
