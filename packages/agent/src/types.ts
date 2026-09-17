@@ -57,7 +57,9 @@ export interface AgentLoopConfig extends StreamOptions {
    * that the LLM can understand. AgentMessages that cannot be converted (e.g., UI-only notifications,
    * status messages) should be filtered out.
    */
-  convertMessages: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
+  convertMessagesToLlm: (
+    messages: AgentMessage[],
+  ) => Message[] | Promise<Message[]>;
   /**
    * Optional transform applied to the context before `convertToLlm`.
    *
@@ -87,16 +89,28 @@ export interface AgentLoopConfig extends StreamOptions {
    * Default: "parallel"
    */
   toolExecution?: "sequential" | "parallel";
+  /**
+   * Returns steering messages to inject into the conversation mid-run.
+   *
+   * Called after the current assistant turn finishes executing its tool calls
+   * If messages are returned, they are added to the context before the next LLM call.
+   * Tool calls from the current assistant message are not skipped.
+   *
+   * Use case: "Steering" the agent while it's working, e.g., injecting user feedback
+   * or corrections without waiting for the agent to finish its current task.
+   */
+  getSteeringMessages?: () => Promise<AgentMessage[]>;
 }
 
 export type AgentEvent =
-  // Agent lifecycle
+  // Agent begin processing prompt
   | { type: "agent_start" }
+  // Emitted when agent finishes; includes final message
   | { type: "agent_end"; messages: AgentMessage[] }
-  // Turn lifecycle - a turn is one assistant response + any tool calls/results
-  | { type: "turn_start" }
+  //Turn lifecycle -> one assistant response + tool calls/results
+  | { type: "iteration_start" }
   | {
-      type: "turn_end";
+      type: "iteration_end";
       message: AgentMessage;
       toolResults: ToolResultMessage[];
     }
