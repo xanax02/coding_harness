@@ -111,13 +111,15 @@ export interface AssistantMessage {
   timeStamp: number;
 }
 
-export interface ToolResultMessage {
+export interface ToolResultMessage<TDetails = any> {
   role: "toolResult";
   toolCallId: string;
   toolName: string;
   content: (TextContent | ImageContent)[];
   isError: boolean;
   timestamp: number;
+  details?: TDetails;
+  usage?: Usage;
 }
 
 export interface TextContent {

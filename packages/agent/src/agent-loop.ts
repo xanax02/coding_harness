@@ -2,12 +2,20 @@ import {
   AssistantMessage,
   AssistantMessageEventStream,
   Context,
+  ToolCall,
+  ToolResultMessage,
 } from "@coding-harness/ai-providers";
 import {
   AgentContext,
   AgentEventSink,
   AgentLoopConfig,
   AgentMessage,
+  AgentTool,
+  AgentToolCall,
+  AgentToolResult,
+  FinalizedToolCallOutcome,
+  ImmediateToolCallOutcome,
+  PreparedToolCall,
   streamFn,
 } from "./types.js";
 
@@ -70,10 +78,10 @@ async function runLoop(
     (await config?.getSteeringMessages?.()) || [];
 
   while (true) {
-    let hasMoreTooCalls = true;
+    let hasMoreToolCalls = true;
 
     // Inner loop -> process tool calls and steering messages
-    while (hasMoreTooCalls && pendingMessages.length > 0) {
+    while (hasMoreToolCalls && pendingMessages.length > 0) {
       if (!firstTurn) {
         emit({ type: "iteration_start" });
       } else {
@@ -109,6 +117,29 @@ async function runLoop(
 
       // Check for tool calls
       const toolCalls = message.content.filter((c) => c.type === "toolCall");
+
+      const toolCallResults: ToolResultMessage[] = [];
+      hasMoreToolCalls = false;
+
+      if (toolCalls.length > 0) {
+        const executedToolBatch =
+          message.stopReason === "length"
+            ? await failAllToolCalls(toolCalls, emit)
+            : await executeToolCalls(
+                currentContext,
+                message,
+                config,
+                signal,
+                emit,
+              );
+        toolCallResults.push(...executedToolBatch.messages);
+        hasMoreToolCalls = !executedToolBatch.terminate;
+
+        for (const result of toolCallResults) {
+          currentContext.messages.push(result);
+          newMessages.push(result);
+        }
+      }
     }
   }
 }
@@ -156,4 +187,178 @@ async function streamAssistantResponse(
   let addedPartial = false;
 
   return response.result;
+}
+
+//when the stop reason is length, all the tools calls should get failed
+// as incomplete args can be there due to truncation
+// json can be still valid but args can be incomplete and we have no way to know which tool call will have
+// these incomplete args so failing all
+async function failAllToolCalls(
+  toolCalls: AgentToolCall[],
+  emit: AgentEventSink,
+) {
+  const messages: ToolResultMessage[] = [];
+  for (const toolCall of toolCalls) {
+    await emit({
+      type: "tool_execution_start",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      args: toolCall.arguments,
+    });
+
+    const finalized: FinalizedToolCallOutcome = {
+      toolCall,
+      result: createErrorToolResult(
+        `Tool call "${toolCall.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
+      ),
+      isError: true,
+    };
+
+    await emitToolExecutionEnd(finalized, emit);
+    const toolResultMessage = createToolResultMessage(finalized);
+    await emitToolResultMessage(toolResultMessage, emit);
+    messages.push(toolResultMessage);
+  }
+  return { messages, terminate: false };
+}
+
+function createErrorToolResult(message: string): AgentToolResult<any> {
+  return {
+    content: [{ type: "text", text: message }],
+    details: {},
+  };
+}
+async function emitToolExecutionEnd(
+  finalized: FinalizedToolCallOutcome,
+  emit: AgentEventSink,
+): Promise<void> {
+  await emit({
+    type: "tool_execution_end",
+    toolCallId: finalized.toolCall.id,
+    toolName: finalized.toolCall.name,
+    result: finalized.result,
+    isError: finalized.isError,
+  });
+}
+
+function createToolResultMessage(
+  finalized: FinalizedToolCallOutcome,
+): ToolResultMessage {
+  return {
+    role: "toolResult",
+    toolCallId: finalized.toolCall.id,
+    toolName: finalized.toolCall.name,
+    content: finalized.result.content ?? [],
+    isError: finalized.isError,
+    timestamp: Date.now(),
+    usage: finalized.result.usage,
+    details: finalized.result.details,
+  };
+}
+
+async function emitToolResultMessage(
+  toolResultMessage: ToolResultMessage,
+  emit: AgentEventSink,
+): Promise<void> {
+  await emit({ type: "message_start", message: toolResultMessage });
+  await emit({ type: "message_end", message: toolResultMessage });
+}
+
+/**
+ * Executes toolCalls from an assistant message
+ * Filters out toolCalls from message params
+ *
+ *
+ * @param currentContext
+ * @param message
+ * @param config
+ * @param signal
+ * @param emit
+ * @returns
+ */
+async function executeToolCalls(
+  currentContext: AgentContext,
+  message: AssistantMessage,
+  config: AgentLoopConfig,
+  signal: AbortSignal,
+  emit: AgentEventSink,
+): Promise<{ messages: ToolResultMessage<any>[]; terminate: boolean }> {
+  //filter toolCalls from all assitant messages
+  const toolCalls = message.content.filter((msg) => msg.type === "toolCall");
+
+  //TODO: in future add parallel execution support
+  // this is exeucuting tools sequentially
+  const toolCallResultsMessages: ToolResultMessage<any>[] = [];
+  const finalizedCalls: FinalizedToolCallOutcome[] = [];
+
+  for (const toolCall of toolCalls) {
+    await emit({
+      type: "tool_execution_start",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      args: toolCall.arguments,
+    });
+  }
+
+  return { messages, terminate: false };
+}
+
+/**
+ *
+ * Prepares a tool call for execution
+ * validate too call arguments
+ * For now it only does this and based on the above
+ * operation is successful or not, it returns either a PreparedToolCall
+ * or an ImmediateToolCallOutcome
+ *
+ * @param currentContext
+ * @param assistantMessage
+ * @param toolCall
+ * @param config
+ * @param signal
+ * @returns
+ */
+async function prepareToolCall(
+  currentContext: AgentContext,
+  assistantMessage: AssistantMessage,
+  toolCall: AgentToolCall,
+  config: AgentLoopConfig,
+  signal: AbortSignal | undefined,
+): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
+  const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
+
+  if (!tool) {
+    return {
+      kind: "immediate",
+      result: createErrorToolResult(`Tool ${toolCall.name} not found`),
+      isError: true,
+    };
+  }
+
+  try {
+    const validatedArgs = validateToolArguments(tool, toolCall);
+
+    //TODO: if beforeTool hook is added handle it here
+    if (signal?.aborted) {
+      return {
+        kind: "immediate",
+        result: createErrorToolResult("Operation aborted"),
+        isError: true,
+      };
+    }
+    return {
+      kind: "prepared",
+      toolCall,
+      tool,
+      args: validatedArgs,
+    };
+  } catch (error) {
+    return {
+      kind: "immediate",
+      result: createErrorToolResult(
+        error instanceof Error ? error.message : String(error),
+      ),
+      isError: true,
+    };
+  }
 }

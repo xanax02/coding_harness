@@ -8,6 +8,7 @@ import {
   StreamOptions,
   TextContent,
   Tool,
+  ToolCall,
   ToolResultMessage,
   Usage,
 } from "@coding-harness/ai-providers";
@@ -100,6 +101,8 @@ export interface AgentLoopConfig extends StreamOptions {
    * or corrections without waiting for the agent to finish its current task.
    */
   getSteeringMessages?: () => Promise<AgentMessage[]>;
+
+  //TODO: add hooks for handling before tool execution, after tool execution, etc.
 }
 
 export type AgentEvent =
@@ -146,3 +149,25 @@ export type AgentEvent =
     };
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
+
+/** Agent tool call type */
+export type AgentToolCall = ToolCall;
+
+export type FinalizedToolCallOutcome = {
+  toolCall: AgentToolCall;
+  result: AgentToolResult<any>;
+  isError: boolean;
+};
+
+export type PreparedToolCall = {
+  kind: "prepared";
+  toolCall: ToolCall;
+  tool: AgentTool<any>;
+  args: unknown;
+};
+
+export type ImmediateToolCallOutcome = {
+  kind: "immediate";
+  result: AgentToolResult<any>;
+  isError: boolean;
+};
