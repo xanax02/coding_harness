@@ -31,9 +31,19 @@ export interface AgentTool<
     toolCallId: string,
     params: z.infer<TSchema>,
     signal?: AbortSignal | undefined,
-    // onUpdate?: AgentToolUpdateCallback<TDetails>,
+    onUpdate?: AgentToolUpdateCallback<TDetails>,
   ) => Promise<AgentToolResult<TDetails>>;
 }
+
+/**
+ * Callback used by tools to stream partial execution updates.
+ *
+ * The callback is scoped to the current `execute()` invocation. Calls made after
+ * the tool promise settles are ignored.
+ */
+export type AgentToolUpdateCallback<T = any> = (
+  partialResult: AgentToolResult<T>,
+) => void;
 
 export interface AgentToolResult<TDetails = unknown> {
   content: (TextContent | ImageContent)[];
@@ -168,6 +178,11 @@ export type PreparedToolCall = {
 
 export type ImmediateToolCallOutcome = {
   kind: "immediate";
+  result: AgentToolResult<any>;
+  isError: boolean;
+};
+
+export type ExecutedToolCallOutcome = {
   result: AgentToolResult<any>;
   isError: boolean;
 };

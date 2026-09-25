@@ -4,6 +4,7 @@ import {
   Context,
   ToolCall,
   ToolResultMessage,
+  validateToolArguments,
 } from "@coding-harness/ai-providers";
 import {
   AgentContext,
@@ -133,7 +134,7 @@ async function runLoop(
                 emit,
               );
         toolCallResults.push(...executedToolBatch.messages);
-        hasMoreToolCalls = !executedToolBatch.terminate;
+        // hasMoreToolCalls = !executedToolBatch.terminate;
 
         for (const result of toolCallResults) {
           currentContext.messages.push(result);
@@ -280,9 +281,9 @@ async function executeToolCalls(
   currentContext: AgentContext,
   message: AssistantMessage,
   config: AgentLoopConfig,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   emit: AgentEventSink,
-): Promise<{ messages: ToolResultMessage<any>[]; terminate: boolean }> {
+): Promise<{ messages: ToolResultMessage<any>[] }> {
   //filter toolCalls from all assitant messages
   const toolCalls = message.content.filter((msg) => msg.type === "toolCall");
 
@@ -298,9 +299,54 @@ async function executeToolCalls(
       toolName: toolCall.name,
       args: toolCall.arguments,
     });
+
+    const preparedToolCall = await prepareToolCall(
+      currentContext,
+      message,
+      toolCall,
+      config,
+      signal,
+    );
+
+    let finalized: FinalizedToolCallOutcome;
+    if (preparedToolCall.kind === "immediate") {
+      finalized = {
+        toolCall,
+        result: preparedToolCall.result,
+        isError: preparedToolCall.isError,
+      };
+    } else {
+      const executedToolCall = await executePreparedToolCall(
+        preparedToolCall,
+        signal,
+        emit,
+      );
+      // TODO: for after execution hook handle it after tool execution
+      // finalized = await finalizeExecutedToolCall(
+      //   currentContext,
+      //   message,
+      //   preparedToolCall,
+      //   executed,
+      //   config,
+      //   signal,
+      // );
+      finalized = executedToolCall;
+    }
+
+    await emitToolExecutionEnd(finalized, emit);
+    const toolResultMessage = createToolResultMessage(finalized);
+    await emitToolResultMessage(toolResultMessage, emit);
+    finalizedCalls.push(finalized);
+    toolCallResultsMessages.push(toolResultMessage);
+
+    if (signal?.aborted) {
+      break;
+    }
   }
 
-  return { messages, terminate: false };
+  return {
+    messages: toolCallResultsMessages,
+  };
 }
 
 /**
@@ -360,5 +406,51 @@ async function prepareToolCall(
       ),
       isError: true,
     };
+  }
+}
+
+async function executePreparedToolCall(
+  preparedToolCall: PreparedToolCall,
+  signal: AbortSignal | undefined,
+  emit: AgentEventSink,
+): Promise<FinalizedToolCallOutcome> {
+  const updateEvents: Promise<void>[] = [];
+  let acceptingUpdates = true;
+
+  try {
+    const result = await preparedToolCall.tool.execute(
+      preparedToolCall.toolCall.id,
+      preparedToolCall.args as never,
+      signal,
+      (partialResult) => {
+        if (!acceptingUpdates) return;
+        updateEvents.push(
+          Promise.resolve(
+            emit({
+              type: "tool_execution_update",
+              toolCallId: preparedToolCall.toolCall.id,
+              toolName: preparedToolCall.toolCall.name,
+              args: preparedToolCall.toolCall.arguments,
+              partialResult,
+            }),
+          ),
+        );
+      },
+    );
+    acceptingUpdates = false;
+    await Promise.all(updateEvents);
+    return { toolCall: preparedToolCall.toolCall, result, isError: false };
+  } catch (error) {
+    acceptingUpdates = false;
+    await Promise.all(updateEvents);
+    return {
+      toolCall: preparedToolCall.toolCall,
+      result: createErrorToolResult(
+        error instanceof Error ? error.message : String(error),
+      ),
+      isError: true,
+    };
+  } finally {
+    acceptingUpdates = false;
   }
 }
