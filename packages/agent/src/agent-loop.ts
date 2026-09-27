@@ -2,12 +2,14 @@ import {
   AssistantMessage,
   AssistantMessageEventStream,
   Context,
+  EventStream,
   ToolCall,
   ToolResultMessage,
   validateToolArguments,
 } from "@coding-harness/ai-providers";
 import {
   AgentContext,
+  AgentEvent,
   AgentEventSink,
   AgentLoopConfig,
   AgentMessage,
@@ -20,14 +22,34 @@ import {
   streamFn,
 } from "./types.js";
 
+function createAgentStream(): EventStream<AgentEvent, AgentMessage[]> {
+  return new EventStream<AgentEvent, AgentMessage[]>(
+    (event: AgentEvent) => event.type === "agent_end",
+    (event: AgentEvent) => (event.type === "agent_end" ? event.messages : []),
+  );
+}
+
+/**
+ * Starts agent loop for new prompt message
+ * Prompt is added to context and events are emitted
+ */
 export function agentLoop(
   prompts: AgentMessage[],
   context: AgentContext,
   config: AgentLoopConfig,
   signal: AbortSignal | undefined,
   streamFunction: streamFn,
-): AssistantMessageEventStream {
-  const stream = new AssistantMessageEventStream();
+): EventStream<AgentEvent, AgentMessage[]> {
+  const stream = createAgentStream();
+
+  void runAgentLoop(
+    prompts,
+    context,
+    config,
+    async (event) => stream.push(event),
+    signal,
+    streamFunction,
+  ).then((messages) => stream.end(messages));
 
   return stream;
 }
@@ -141,8 +163,32 @@ async function runLoop(
           newMessages.push(result);
         }
       }
+
+      await emit({
+        type: "iteration_end",
+        message,
+        toolResults: toolCallResults,
+      });
+
+      if (
+        await config.shouldStopAfterTurn?.({
+          message,
+          toolResults: toolCallResults,
+          context: currentContext,
+          newMessages,
+        })
+      ) {
+        await emit({ type: "agent_end", messages: newMessages });
+        return;
+      }
+
+      pendingMessages = (await config.getSteeringMessages?.()) || [];
     }
+
+    break;
   }
+
+  await emit({ type: "agent_end", messages: newMessages });
 }
 
 /**
@@ -187,7 +233,60 @@ async function streamAssistantResponse(
   let partialMessage: AssistantMessage | null = null;
   let addedPartial = false;
 
-  return response.result;
+  for await (const event of response) {
+    switch (event.type) {
+      case "start":
+        partialMessage = event.partial;
+        context.messages.push(partialMessage);
+        addedPartial = true;
+        await emit({ type: "message_start", message: { ...partialMessage } });
+        break;
+
+      case "text_start":
+      case "text_delta":
+      case "text_end":
+      case "thinking_start":
+      case "thinking_delta":
+      case "thinking_end":
+      case "toolcall_start":
+      case "toolcall_delta":
+      case "toolcall_end":
+        if (partialMessage) {
+          partialMessage = event.partial;
+          context.messages[context.messages.length - 1] = partialMessage;
+          await emit({
+            type: "message_update",
+            assistantMessageEvent: event,
+            message: { ...partialMessage },
+          });
+        }
+        break;
+      case "done":
+      case "error": {
+        const finalMessage = await response.result();
+        if (addedPartial) {
+          context.messages[context.messages.length - 1] = finalMessage;
+        } else {
+          context.messages.push(finalMessage);
+        }
+        if (!addedPartial) {
+          await emit({ type: "message_start", message: { ...finalMessage } });
+        }
+        await emit({ type: "message_end", message: finalMessage });
+        return finalMessage;
+      }
+    }
+  }
+
+  const finalMessage = await response.result();
+  if (addedPartial) {
+    context.messages[context.messages.length - 1] = finalMessage;
+  } else {
+    context.messages.push(finalMessage);
+    await emit({ type: "message_start", message: { ...finalMessage } });
+  }
+  await emit({ type: "message_end", message: finalMessage });
+  return finalMessage;
 }
 
 //when the stop reason is length, all the tools calls should get failed

@@ -1,30 +1,37 @@
 import { AssistantMessage, AssistantMessageEvent } from "../types.js";
 
-export class AssistantMessageEventStream implements AsyncIterable<AssistantMessageEvent> {
-  private queue: AssistantMessageEvent[] = [];
-  private waitingQueue: ((
-    value: IteratorResult<AssistantMessageEvent>,
-  ) => void)[] = [];
+// export class AssistantMessageEventStream implements AsyncIterable<AssistantMessageEvent> {
+export class EventStream<T, R = T> implements AsyncIterable<T> {
+  private queue: T[] = [];
+  private waitingQueue: ((value: IteratorResult<T>) => void)[] = [];
   private done: boolean = false;
-  private finalResultPromise: Promise<AssistantMessage>; // promise which will get resolved when the stream is done
+  private finalResultPromise: Promise<R>; // promise which will get resolved when the stream is done
 
   //this will contain the resolve callback from above promise so that it can get resolved outside the promise elsewhere
-  private resolveFinalResult!: (value: AssistantMessage) => void;
+  private resolveFinalResult!: (value: R) => void;
 
-  constructor() {
+  //now this class is for generic events, it can't check event.type === "done" or "error" directly
+  //need to pass callbacks in constructor to check for done and error events
+  private isComplete: (event: T) => boolean;
+  private extractResult: (event: T) => R;
+
+  constructor(
+    isComplete: (event: T) => boolean,
+    extractResult: (event: T) => R,
+  ) {
+    this.isComplete = isComplete;
+    this.extractResult = extractResult;
     this.finalResultPromise = new Promise((resolve) => {
       this.resolveFinalResult = resolve;
     });
   }
 
-  push(event: AssistantMessageEvent): void {
+  push(event: T): void {
     if (this.done) return;
 
-    if (event.type === "done" || event.type === "error") {
+    if (this.isComplete(event)) {
       this.done = true;
-      this.resolveFinalResult(
-        event.type === "done" ? event.message : event.error,
-      );
+      this.resolveFinalResult(this.extractResult(event));
     }
 
     const watier = this.waitingQueue.shift();
@@ -35,7 +42,7 @@ export class AssistantMessageEventStream implements AsyncIterable<AssistantMessa
     }
   }
 
-  end(result?: AssistantMessage): void {
+  end(result?: R): void {
     this.done = true;
     if (result !== undefined) {
       this.resolveFinalResult(result);
@@ -49,7 +56,7 @@ export class AssistantMessageEventStream implements AsyncIterable<AssistantMessa
     }
   }
 
-  async *[Symbol.asyncIterator]() {
+  async *[Symbol.asyncIterator](): AsyncIterator<T> {
     while (true) {
       if (this.queue.length > 0) {
         yield this.queue.shift()!;
@@ -59,11 +66,9 @@ export class AssistantMessageEventStream implements AsyncIterable<AssistantMessa
         // if producer has not generated any event yet and consumer is waiting,
         // add a awaited result promise to waiting queue
         // when the token/event is available to consume this promise will get resolve with event's value
-        const result = await new Promise<IteratorResult<AssistantMessageEvent>>(
-          (resolve) => {
-            this.waitingQueue.push(resolve);
-          },
-        );
+        const result = await new Promise<IteratorResult<T>>((resolve) => {
+          this.waitingQueue.push(resolve);
+        });
         if (result.done) {
           return;
         }
@@ -73,7 +78,26 @@ export class AssistantMessageEventStream implements AsyncIterable<AssistantMessa
   }
 
   //method to get final result as promise after event ends
-  result(): Promise<AssistantMessage> {
+  result(): Promise<R> {
     return this.finalResultPromise;
+  }
+}
+
+export class AssistantMessageEventStream extends EventStream<
+  AssistantMessageEvent,
+  AssistantMessage
+> {
+  constructor() {
+    super(
+      (event) => event.type === "done" || event.type === "error",
+      (event) => {
+        if (event.type === "done") {
+          return event.message;
+        } else if (event.type === "error") {
+          return event.error;
+        }
+        throw new Error("Unexpected event type for final result");
+      },
+    );
   }
 }

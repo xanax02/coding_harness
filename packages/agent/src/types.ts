@@ -1,4 +1,5 @@
 import {
+  AssistantMessage,
   AssistantMessageEvent,
   AssistantMessageEventStream,
   Context,
@@ -111,8 +112,32 @@ export interface AgentLoopConfig extends StreamOptions {
    * or corrections without waiting for the agent to finish its current task.
    */
   getSteeringMessages?: () => Promise<AgentMessage[]>;
+  /**
+   * Called after each turn fully completes and `turn_end` has been emitted.
+   *
+   * If it returns true, the loop emits `agent_end` and exits before polling steering or follow-up queues,
+   * without starting another LLM call. The current assistant response and any tool executions finish normally.
+   *
+   * Use this to request a graceful stop after the current turn, e.g. before context gets too full.
+   *
+   * Contract: must not throw or reject. Throwing interrupts the low-level agent loop without producing a normal event sequence.
+   */
+  shouldStopAfterTurn?: (
+    context: ShouldStopAfterTurnContext,
+  ) => boolean | Promise<boolean>;
 
   //TODO: add hooks for handling before tool execution, after tool execution, etc.
+}
+
+export interface ShouldStopAfterTurnContext {
+  /** The assistant message that completed the turn. */
+  message: AssistantMessage;
+  /** Tool result messages passed to the preceding `turn_end` event. */
+  toolResults: ToolResultMessage[];
+  /** Current agent context after the turn's assistant message and tool results have been appended. */
+  context: AgentContext;
+  /** Messages that this loop invocation will return if it exits at this point. Prompt runs include the initial prompt messages; continuation runs do not include pre-existing context messages. */
+  newMessages: AgentMessage[];
 }
 
 export type AgentEvent =
