@@ -16,6 +16,7 @@ import {
   AgentTool,
   AgentToolCall,
   AgentToolResult,
+  ExecutedToolCallBatch,
   FinalizedToolCallOutcome,
   ImmediateToolCallOutcome,
   PreparedToolCall,
@@ -100,6 +101,8 @@ async function runLoop(
   let pendingMessages: AgentMessage[] =
     (await config?.getSteeringMessages?.()) || [];
 
+  // outerloop is not required for now as it is not handling any queued follow up messages given by user
+  // still its there for future use
   while (true) {
     let hasMoreToolCalls = true;
 
@@ -138,7 +141,7 @@ async function runLoop(
         return;
       }
 
-      // Check for tool calls
+      //tool calls
       const toolCalls = message.content.filter((c) => c.type === "toolCall");
 
       const toolCallResults: ToolResultMessage[] = [];
@@ -156,7 +159,7 @@ async function runLoop(
                 emit,
               );
         toolCallResults.push(...executedToolBatch.messages);
-        // hasMoreToolCalls = !executedToolBatch.terminate;
+        hasMoreToolCalls = !executedToolBatch.terminate;
 
         for (const result of toolCallResults) {
           currentContext.messages.push(result);
@@ -296,7 +299,7 @@ async function streamAssistantResponse(
 async function failAllToolCalls(
   toolCalls: AgentToolCall[],
   emit: AgentEventSink,
-) {
+): Promise<ExecutedToolCallBatch> {
   const messages: ToolResultMessage[] = [];
   for (const toolCall of toolCalls) {
     await emit({
@@ -382,7 +385,7 @@ async function executeToolCalls(
   config: AgentLoopConfig,
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
-): Promise<{ messages: ToolResultMessage<any>[] }> {
+): Promise<ExecutedToolCallBatch> {
   //filter toolCalls from all assitant messages
   const toolCalls = message.content.filter((msg) => msg.type === "toolCall");
 
@@ -445,7 +448,17 @@ async function executeToolCalls(
 
   return {
     messages: toolCallResultsMessages,
+    terminate: shouldTerminateToolBatch(finalizedCalls),
   };
+}
+
+function shouldTerminateToolBatch(
+  finalizedCalls: FinalizedToolCallOutcome[],
+): boolean {
+  return (
+    finalizedCalls.length > 0 &&
+    finalizedCalls.every((finalized) => finalized.result.terminate === true)
+  );
 }
 
 /**

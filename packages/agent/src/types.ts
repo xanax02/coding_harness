@@ -50,6 +50,7 @@ export interface AgentToolResult<TDetails = unknown> {
   content: (TextContent | ImageContent)[];
   details?: TDetails;
   usage?: Usage;
+  terminate?: boolean;
 }
 
 export type AgentMessage = Message;
@@ -210,4 +211,9 @@ export type ImmediateToolCallOutcome = {
 export type ExecutedToolCallOutcome = {
   result: AgentToolResult<any>;
   isError: boolean;
+};
+
+export type ExecutedToolCallBatch = {
+  messages: ToolResultMessage<any>[];
+  terminate: boolean;
 };
