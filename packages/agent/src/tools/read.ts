@@ -34,6 +34,7 @@ export function createReadTool(cwd: string): AgentTool<typeof readSchema> {
     execute: async (toolCallId, params, signal) => {
       const { path, offset, limit } = params;
 
+      //find abs path
       const absolutePath = resolveReadPath(path, cwd);
 
       //it is returning promise as we want some machenism to cancel or reject the task on abort signal.
@@ -66,6 +67,7 @@ export function createReadTool(cwd: string): AgentTool<typeof readSchema> {
             let content: TextContent[];
             let details: ReadToolDetails | undefined;
 
+            //get text content
             const textContent = await readFile(absolutePath, "utf-8");
             const allLines = textContent.split("\n");
             const totalFileLines = allLines.length;
@@ -74,12 +76,14 @@ export function createReadTool(cwd: string): AgentTool<typeof readSchema> {
             const startLine = offset ? Math.max(0, offset - 1) : 0;
             const startLineDisplay = startLine + 1;
 
+            // if offset is beyond end of file lines
             if (startLine >= totalFileLines) {
               throw new Error(
                 `Offset ${offset} is beyond end of file (${totalFileLines} lines total)`,
               );
             }
 
+            // get the context window to work with
             let selectedContent: string;
             let userLimitedLines: number | undefined;
             if (limit !== undefined) {
@@ -90,18 +94,19 @@ export function createReadTool(cwd: string): AgentTool<typeof readSchema> {
               selectedContent = allLines.slice(startLine).join("\n");
             }
 
+            // truncate the content if needed
             const truncation = truncateHead(selectedContent);
             let outputText: string;
 
+            // First line at offset exceeds 30KB
             if (truncation.firstLineExceedsLimit) {
-              // First line at offset exceeds 30KB - tell model to use bash
               const firstLineSize = formatSize(
                 Buffer.byteLength(allLines[startLine], "utf-8"),
               );
               outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`;
               details = { truncation };
             } else if (truncation.truncated) {
-              // Truncation occurred - build actionable notice
+              // Truncation occurred
               const endLineDisplay =
                 startLineDisplay + truncation.outputLines - 1;
               const nextOffset = endLineDisplay + 1;
