@@ -1,6 +1,5 @@
 import { AgentTool } from "../types.js";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { resolveToCwd } from "../utils/pathUtils.js";
 import { dirname } from "path";
 import { mkdir, writeFile } from "fs/promises";
