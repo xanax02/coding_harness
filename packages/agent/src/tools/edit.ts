@@ -186,3 +186,5 @@ export function detectLineEnding(content: string): "\r\n" | "\n" {
   if (crlfIdx === -1) return "\n";
   return crlfIdx < lfIdx ? "\r\n" : "\n";
 }
+
+export const editTool = createEditTool(process.cwd());

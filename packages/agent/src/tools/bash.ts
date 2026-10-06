@@ -213,3 +213,5 @@ function getTempFilePath(): string {
   const id = randomBytes(8).toString("hex");
   return join(tmpdir(), `coding-harness-bash-${id}.log`);
 }
+
+export const bashTool = createBashTool(process.cwd());
