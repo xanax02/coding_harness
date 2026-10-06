@@ -210,3 +210,9 @@ export type AgentEvent =
 //   messages: ToolResultMessage<any>[];
 //   terminate: boolean;
 // };
+
+//agent state
+export interface AgentState {
+  systemPrompt: string;
+  model: ModelInfo;
+}
