@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AgentTool } from "../types.js";
 import {
   DEFAULT_MAX_BYTES,
+  formatSize,
   truncateTail,
   TruncationResult,
 } from "./truncate.js";
@@ -118,13 +119,91 @@ export function createBashTool(cwd: string): AgentTool<typeof bashSchema> {
           }
         };
 
-        // Collect stdout and stderr together
+        // pipe stdout and stderr to handleData
         if (child.stdout) {
           child.stdout.on("data", handleData);
         }
         if (child.stderr) {
           child.stderr.on("data", handleData);
         }
+
+        child.on("close", (code) => {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+
+          if (signal) {
+            signal.removeEventListener("abort", onAbort);
+          }
+
+          const collectedBuffer = Buffer.concat(chunks);
+          const collectedBufferToText = collectedBuffer.toString("utf-8");
+
+          if (tempFileStream) {
+            tempFileStream.end();
+          }
+
+          if (signal?.aborted) {
+            let output = collectedBufferToText;
+            if (output) output += "\n\n";
+            output += "Command was aborted";
+            reject(new Error(output));
+            return;
+          }
+
+          if (timedOut) {
+            let output = collectedBufferToText;
+            if (output) output += "\n\n";
+            output +=
+              "Command took too long and was terminated after " +
+              timeout +
+              "seconds";
+            reject(new Error(output));
+            return;
+          }
+
+          const tailTruncation = truncateTail(collectedBufferToText);
+          let outputText = tailTruncation.content || "NO CONTENT";
+
+          let details: bashToolDetails | undefined;
+
+          if (tailTruncation.truncated) {
+            details = {
+              truncation: tailTruncation,
+              fullOutputPath: tempFilePath,
+            };
+
+            // Build actionable notice
+            const startLine =
+              tailTruncation.totalLines - tailTruncation.outputLines + 1;
+            const endLine = tailTruncation.totalLines;
+
+            if (tailTruncation.lastLinePartial) {
+              // Edge case: last line alone > 30KB
+              const lastLineSize = formatSize(
+                Buffer.byteLength(
+                  collectedBufferToText.split("\n").pop() || "",
+                  "utf-8",
+                ),
+              );
+              outputText += `\n\n[Showing last ${formatSize(tailTruncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${tempFilePath}]`;
+            } else if (tailTruncation.truncatedBy === "lines") {
+              outputText += `\n\n[Showing lines ${startLine}-${endLine} of ${tailTruncation.totalLines}. Full output: ${tempFilePath}]`;
+            } else {
+              outputText += `\n\n[Showing lines ${startLine}-${endLine} of ${tailTruncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${tempFilePath}]`;
+            }
+          }
+
+          if (code !== 0 && code !== null) {
+            outputText += `\n\nCommand exited with code ${code}`;
+            reject(new Error(outputText));
+          } else {
+            resolve({
+              content: [{ type: "text", text: outputText }],
+              details,
+            });
+          }
+        });
       });
     },
   };
