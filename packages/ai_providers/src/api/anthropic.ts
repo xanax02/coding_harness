@@ -23,7 +23,10 @@ import { Anthropic } from "@anthropic-ai/sdk";
 import { transformMessages } from "../utils/tranform-messages.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicodes.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-helper.js";
+import {
+  parseJsonWithRepair,
+  parseStreamingJson,
+} from "../utils/json-helper.js";
 import { calculateCost } from "../provider.js";
 
 export interface ServerSentEvent {
@@ -613,7 +616,7 @@ export const stream = (
 ): AssistantMessageEventStream => {
   const stream = new AssistantMessageEventStream();
 
-  fetchStream(stream, model, context, options);
+  void fetchStream(stream, model, context, options);
 
   return stream;
 };
@@ -645,6 +648,9 @@ export const buildParams = (
       {
         type: "text",
         text: context.systemPrompt,
+        cache_control: {
+          type: "ephemeral",
+        },
       },
     ];
   }
@@ -724,27 +730,29 @@ function convertMessages(
           });
         }
       } else {
-        const blocks: ContentBlockParam[] = msg.content.map((item: TextContent | ImageContent) => {
-          if (item.type === "text") {
-            return {
-              type: "text",
-              text: sanitizeSurrogates(item.text),
-            };
-          } else {
-            return {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: item.mimeType as
-                  | "image/jpeg"
-                  | "image/png"
-                  | "image/gif"
-                  | "image/webp",
-                data: item.image,
-              },
-            };
-          }
-        });
+        const blocks: ContentBlockParam[] = msg.content.map(
+          (item: TextContent | ImageContent) => {
+            if (item.type === "text") {
+              return {
+                type: "text",
+                text: sanitizeSurrogates(item.text),
+              };
+            } else {
+              return {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: item.mimeType as
+                    | "image/jpeg"
+                    | "image/png"
+                    | "image/gif"
+                    | "image/webp",
+                  data: item.image,
+                },
+              };
+            }
+          },
+        );
         const filteredBlocks = blocks.filter((b) => {
           if (b.type === "text") {
             return b.text.trim().length > 0;

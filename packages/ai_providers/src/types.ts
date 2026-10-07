@@ -31,54 +31,54 @@ export interface ModelInfo {
   /** TODO: add compatibilities like longCacheRetention, etc. */
 }
 
-/**
- * Provider interface
- */
-export interface Provider {
-  readonly id: string;
-  readonly name: string;
-  readonly baseUrl?: string;
-  readonly auth: ProviderAuth;
+// /**
+//  * Provider interface
+//  */
+// export interface Provider {
+//   readonly id: string;
+//   readonly name: string;
+//   readonly baseUrl?: string;
+//   readonly auth: ProviderAuth;
 
-  getModels(): readonly ModelInfo[];
-  getModel(modelId: string): ModelInfo | undefined;
+//   getModels(): readonly ModelInfo[];
+//   getModel(modelId: string): ModelInfo | undefined;
 
-  stream(
-    model: ModelInfo,
-    context: Context,
-    options?: StreamOptions,
-  ): AssistantMessageEventStream;
-}
+//   stream(
+//     model: ModelInfo,
+//     context: Context,
+//     options?: StreamOptions,
+//   ): AssistantMessageEventStream;
+// }
 
-export interface ProviderAuth {
-  apiKeyEnvVar: string;
-}
+// export interface ProviderAuth {
+//   apiKeyEnvVar: string;
+// }
 
-export interface ProviderRegistry {
-  setProvider(provider: Provider): void;
-  deleteProvider(id: string): void;
+// export interface ProviderRegistry {
+//   setProvider(provider: Provider): void;
+//   deleteProvider(id: string): void;
 
-  getProviders(): readonly Provider[];
-  getProvider(id: string): Provider | undefined;
+//   getProviders(): readonly Provider[];
+//   getProvider(id: string): Provider | undefined;
 
-  getModels(providerId: string): readonly ModelInfo[];
-  getModel(providerId: string, modelId: string): ModelInfo | undefined;
+//   getModels(providerId: string): readonly ModelInfo[];
+//   getModel(providerId: string, modelId: string): ModelInfo | undefined;
 
-  /** Explicit override; takes precedence over the provider's env var */
-  setApiKey(providerId: string, apiKey: string): void;
-  hasApiKey(providerId: string): boolean;
+//   /** Explicit override; takes precedence over the provider's env var */
+//   setApiKey(providerId: string, apiKey: string): void;
+//   hasApiKey(providerId: string): boolean;
 
-  stream(
-    model: ModelInfo,
-    context: Context,
-    options?: StreamOptions,
-  ): AssistantMessageEventStream;
-  complete(
-    model: ModelInfo,
-    context: Context,
-    options?: StreamOptions,
-  ): Promise<AssistantMessage>;
-}
+//   stream(
+//     model: ModelInfo,
+//     context: Context,
+//     options?: StreamOptions,
+//   ): AssistantMessageEventStream;
+//   complete(
+//     model: ModelInfo,
+//     context: Context,
+//     options?: StreamOptions,
+//   ): Promise<AssistantMessage>;
+// }
 
 /**
  * Context interfaces for AI agent
@@ -100,8 +100,6 @@ export interface UserMessage {
 
 export interface AssistantMessage {
   role: "assistant";
-  responseModel?: string; // Concrete `chunk.model` when different from the requested `model` (e.g. OpenRouter `auto` -> `anthropic/...`)
-  responseId?: string; // Provider-specific response/message identifier when the upstream API exposes one
   content: (TextContent | ThinkingContent | ToolCall)[];
   provider: ProviderId;
   model: string;
@@ -197,10 +195,19 @@ export interface StreamOptions {
   apiKey?: string;
 
   metaData?: Record<string, unknown>;
+  resoning?: ReasoningEffort;
 
   // TODO: add cache rentention config for better model performance
   // and enabling caching for tokens optimization
 }
+
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export type StreamFunction = (
+  model: ModelInfo,
+  context: Context,
+  options?: StreamOptions,
+) => AssistantMessageEventStream;
 
 /**
  * To be documented
