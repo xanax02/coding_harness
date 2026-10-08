@@ -348,7 +348,7 @@ async function fetchStream(
     role: "assistant",
     content: [],
     provider: "anthropic",
-    model: "",
+    model: model.id,
     usage: {
       input: 0,
       output: 0,
@@ -397,7 +397,7 @@ async function fetchStream(
     )) {
       if (event.type === "message_start") {
         //on message_start set responseId and initial usage
-        output.responseId = event.message.id;
+        // output.responseId = event.message.id;
         output.usage.input = event.message.usage.input_tokens || 0;
         output.usage.output = event.message.usage.output_tokens || 0;
         output.usage.cacheRead =
@@ -626,11 +626,7 @@ export const buildParams = (
   context: Context,
   options?: AnthropicOptions,
 ): MessageCreateParamsStreaming => {
-  const transformedMessages = transformMessages(
-    context.messages,
-    model,
-    normalizeToolCallId,
-  );
+  const transformedMessages = transformMessages(context.messages, model);
 
   const anthropicCompatMessages = convertMessages(transformedMessages);
 
