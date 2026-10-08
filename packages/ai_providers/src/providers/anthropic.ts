@@ -6,7 +6,7 @@
 import {
   ContentBlockParam,
   MessageCreateParamsStreaming,
-} from "@anthropic-ai/sdk/resources.js";
+} from "@anthropic-ai/sdk/resources";
 import {
   Context,
   ImageContent,
@@ -14,11 +14,14 @@ import {
   ModelInfo,
   StreamOptions,
   TextContent,
+  Tool,
   ToolResultMessage,
 } from "../types.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicodes.js";
 import { transformMessages } from "../utils/tranform-messages.js";
 import { MessageParam } from "@anthropic-ai/sdk/resources";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import Anthropic from "@anthropic-ai/sdk";
 
 //   return {
 //     id: "anthropic",
@@ -303,4 +306,22 @@ function convertMessages(transformedMessages: Message[]): MessageParam[] {
   }
 
   return params;
+}
+
+function convertTools(tools: Tool[]): Anthropic.Messages.Tool[] {
+  if (!tools) return [];
+
+  return tools.map((tool) => {
+    const schema = zodToJsonSchema(tool.parameters as any);
+
+    return {
+      name: tool.name,
+      description: tool.description,
+      input_schema: {
+        type: "object",
+        properties: (schema as any).properties ?? {},
+        required: (schema as any).required ?? [],
+      },
+    };
+  });
 }
