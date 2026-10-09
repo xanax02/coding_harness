@@ -18,6 +18,7 @@
   "dependencies": {
     "@coding-harness/agent": "*",
     "@coding-harness/ai-providers": "*",
+    "dotenv": "^18.0.7",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-import { getModel, getModels, getProviders } from "@coding-harness/ai-providers";
+import {
+  getModel,
+  getModels,
+  getProviders,
+} from "@coding-harness/ai-providers";
+import "dotenv/config";
 import {
   Agent,
   buildSystemPrompt,
@@ -86,7 +91,8 @@ async function main(): Promise<number> {
     throw new Error("--print needs a prompt");
   }
 
-  const getApiKey = (provider: string) => process.env[API_KEY_ENV[provider] ?? ""];
+  const getApiKey = (provider: string) =>
+    process.env[API_KEY_ENV[provider] ?? ""];
 
   const cwd = process.cwd();
   const tools = createCodingTools(cwd);
@@ -118,7 +124,9 @@ async function main(): Promise<number> {
 
   const model = agent.state.model;
   if (!getApiKey(model.provider)) {
-    throw new Error(`${API_KEY_ENV[model.provider] ?? "API key"} is not set (needed for ${model.provider})`);
+    throw new Error(
+      `${API_KEY_ENV[model.provider] ?? "API key"} is not set (needed for ${model.provider})`,
+    );
   }
 
   const repl = new Repl({
