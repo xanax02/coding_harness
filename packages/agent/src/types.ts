@@ -215,4 +215,11 @@ export type AgentEvent =
 export interface AgentState {
   systemPrompt: string;
   model: ModelInfo;
+  thinkingLevel: ThinkingLevel;
+  tools: AgentTool<any>[];
+  messages: AgentMessage[];
+  isStreaming: boolean;
+  streamMessage: AgentMessage | null;
+  pendingToolCalls: Set<string>;
+  error?: string;
 }
