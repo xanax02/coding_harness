@@ -1,8 +1,11 @@
 import { ModelInfo } from "../types.js";
 import { ANTHROPIC_MODELS } from "./anthropic.js";
+import { OPENAI_MODELS, OPENROUTER_MODELS } from "./openai.js";
 
 export const MODELS = {
   anthropic: ANTHROPIC_MODELS,
+  openai: OPENAI_MODELS,
+  openrouter: OPENROUTER_MODELS,
 };
 
 export const modelRegistry: Map<string, Map<string, ModelInfo>> = new Map();

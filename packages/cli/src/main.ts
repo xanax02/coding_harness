@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { getModel, getModels } from "@coding-harness/ai-providers";
+import { getModel, getModels, getProviders } from "@coding-harness/ai-providers";
 import {
   Agent,
   buildSystemPrompt,
@@ -23,7 +23,28 @@ In the session:
   /exit              quit
   Ctrl+C             abort the current run; press again to exit
 
-Needs ANTHROPIC_API_KEY.`;
+Default model is openrouter/openai/gpt-4o-mini and needs OPENROUTER_API_KEY.
+Other keys: OPENAI_API_KEY (openai), ANTHROPIC_API_KEY (anthropic).`;
+
+const API_KEY_ENV: Record<string, string> = {
+  openrouter: "OPENROUTER_API_KEY",
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+};
+
+function findModel(spec: string) {
+  for (const provider of getProviders()) {
+    if (spec.startsWith(`${provider}/`)) {
+      const model = getModel(provider, spec.slice(provider.length + 1));
+      if (model) return model;
+    }
+  }
+  for (const provider of ["openrouter", ...getProviders()]) {
+    const model = getModel(provider, spec);
+    if (model) return model;
+  }
+  return undefined;
+}
 
 interface Args {
   prompt?: string;
@@ -65,8 +86,7 @@ async function main(): Promise<number> {
     throw new Error("--print needs a prompt");
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
+  const getApiKey = (provider: string) => process.env[API_KEY_ENV[provider] ?? ""];
 
   const cwd = process.cwd();
   const tools = createCodingTools(cwd);
@@ -80,21 +100,30 @@ async function main(): Promise<number> {
       }),
       tools,
     },
-    getApiKey: () => apiKey,
+    getApiKey,
   });
 
   if (args.model) {
-    const model = getModel("anthropic", args.model);
+    // accepts "<provider>/<id>" (e.g. anthropic/claude-haiku-4-5-20251001) or a bare id
+    // (looked up under openrouter first, then the other providers)
+    const model = findModel(args.model);
     if (!model) {
-      const known = getModels("anthropic").map((m) => m.id).join(", ");
+      const known = getProviders()
+        .flatMap((p) => getModels(p).map((m) => `${p}/${m.id}`))
+        .join(", ");
       throw new Error(`Unknown model "${args.model}". Known: ${known}`);
     }
     agent.setModel(model);
   }
 
+  const model = agent.state.model;
+  if (!getApiKey(model.provider)) {
+    throw new Error(`${API_KEY_ENV[model.provider] ?? "API key"} is not set (needed for ${model.provider})`);
+  }
+
   const repl = new Repl({
     agent,
-    getApiKey: () => apiKey,
+    getApiKey,
     compaction: { enabled: args.compact },
   });
 
