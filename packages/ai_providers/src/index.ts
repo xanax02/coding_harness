@@ -6,5 +6,5 @@ export * from "./utils/lazy.js";
 export * from "./utils/sanitize-unicodes.js";
 export * from "./utils/tranform-messages.js";
 export * from "./providers/anthropic.js";
-export * from "./api/anthropic.js";
 export * from "./utils/validate.js";
+export * from "./stream.js";
