@@ -1,4 +1,31 @@
-export function buildSystemPrompt(): string {
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+export interface SystemPromptOptions {
+  cwd?: string;
+  tools?: { name: string; description: string }[];
+  /** contents of AGENTS.md / CLAUDE.md, see loadProjectContext */
+  projectContext?: string;
+  date?: Date;
+}
+
+const PROJECT_CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md"];
+
+/** Reads AGENTS.md / CLAUDE.md from cwd, returns undefined if neither exists */
+export function loadProjectContext(cwd: string): string | undefined {
+  const sections: string[] = [];
+  for (const name of PROJECT_CONTEXT_FILES) {
+    const file = join(cwd, name);
+    if (!existsSync(file)) continue;
+    sections.push(`## ${file}\n\n${readFileSync(file, "utf-8").trim()}`);
+  }
+  return sections.length > 0 ? sections.join("\n\n") : undefined;
+}
+
+export function buildSystemPrompt(options: SystemPromptOptions = {}): string {
+  const cwd = options.cwd ?? process.cwd();
+  const tools = options.tools ?? [];
+  const toolNames = new Set(tools.map((t) => t.name));
   const mainPrompt = `
 You are an expert software engineer working as an autonomous coding agent in the user's terminal. You complete tasks end to end: you read code, run commands, edit files, and verify the results. Your work is judged by whether it is correct, minimal, and verified, not by how much you say.
 
@@ -64,5 +91,27 @@ Current date and time: {{DATE}}
 Current working directory: {{CWD}}
   `;
 
-  return mainPrompt;
+  const toolsList =
+    tools.length > 0
+      ? tools.map((t) => `- ${t.name}: ${t.description}`).join("\n")
+      : "(none)";
+  const readOnly =
+    toolNames.has("edit") || toolNames.has("write")
+      ? ""
+      : "You are in READ-ONLY mode. Do not modify files.";
+  const projectContext = options.projectContext
+    ? `# Project Context\n${options.projectContext}`
+    : "";
+
+  // function replacers: file contents may contain "$&" and friends
+  return mainPrompt
+    .replace(/\{\{TOOLS_LIST\}\}/, () => toolsList)
+    .replace(/\{\{READ_ONLY_NOTICE[^}]*\}\}/, () => readOnly)
+    .replace(/\{\{DOCUMENTATION[^}]*\}\}/, () => "")
+    .replace(/\{\{PROJECT_CONTEXT[^}]*\}\}/, () => projectContext)
+    .replace(/\{\{SKILLS[^}]*\}\}/, () => "")
+    .replace(/\{\{DATE\}\}/, () => (options.date ?? new Date()).toISOString())
+    .replace(/\{\{CWD\}\}/, () => cwd)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

@@ -63,7 +63,7 @@ function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 export class Agent {
   private _state: AgentState = {
     systemPrompt: "",
-    model: getModel("anthropic", "claude-haiku-4-5-20251001"),
+    model: getModel("openrouter", "openai/gpt-4o-mini"),
     thinkingLevel: "off",
     tools: [],
     messages: [],
@@ -186,6 +186,11 @@ export class Agent {
    */
   waitForIdle(): Promise<void> {
     return this.runningPrompt ?? Promise.resolve();
+  }
+
+  /** abort the current run (LLM stream and running tool); no-op when idle */
+  abort() {
+    this.abortController?.abort();
   }
 
   reset() {

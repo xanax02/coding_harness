@@ -6,5 +6,8 @@ export * from "./utils/lazy.js";
 export * from "./utils/sanitize-unicodes.js";
 export * from "./utils/tranform-messages.js";
 export * from "./providers/anthropic.js";
+export * from "./providers/openai.js";
+export * from "./models/openai.js";
 export * from "./utils/validate.js";
+export * from "./utils/overflow.js";
 export * from "./stream.js";

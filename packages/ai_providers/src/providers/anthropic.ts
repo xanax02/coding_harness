@@ -20,7 +20,7 @@ import {
 import { sanitizeSurrogates } from "../utils/sanitize-unicodes.js";
 import { transformMessages } from "../utils/tranform-messages.js";
 import { MessageParam } from "@anthropic-ai/sdk/resources";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { calculateCost } from "../provider.js";
@@ -389,9 +389,9 @@ export const buildParams = (
   }
 
   // if tools are present in context, add them to params
-  // if (context.tools && context.tools.length > 0) {
-  //   params.tools = convertTools(context.tools);
-  // }
+  if (context.tools && context.tools.length > 0) {
+    params.tools = convertTools(context.tools);
+  }
 
   // Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
   if (options?.temperature !== undefined) {
@@ -459,9 +459,9 @@ function convertMessages(transformedMessages: Message[]): MessageParam[] {
             }
           },
         );
-        const filteredBlocks = blocks.filter((b) => {
-          b.type === "text" && b.text.trim().length > 0;
-        });
+        const filteredBlocks = blocks.filter(
+          (b) => b.type === "text" && b.text.trim().length > 0,
+        );
         if (filteredBlocks.length === 0) continue;
         params.push({
           role: "user",
@@ -574,7 +574,8 @@ function convertTools(tools: Tool[]): Anthropic.Messages.Tool[] {
   if (!tools) return [];
 
   return tools.map((tool) => {
-    const schema = zodToJsonSchema(tool.parameters as any);
+    // zod-to-json-schema only understands zod 3; zod 4 ships its own converter
+    const schema = z.toJSONSchema(tool.parameters, { target: "draft-7" });
 
     return {
       name: tool.name,

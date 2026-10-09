@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 let cachedShellConfig: { shell: string; args: string[] } | null = null;
 
@@ -16,6 +17,27 @@ function findBashOnPath(): string | null {
       const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
       if (firstMatch && existsSync(firstMatch)) {
         return firstMatch;
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
+ * Locate Git Bash relative to git.exe on PATH (<root>\cmd\git.exe -> <root>\bin\bash.exe)
+ */
+function findGitBashViaGit(): string | null {
+  try {
+    const result = spawnSync("where", ["git.exe"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    if (result.status === 0 && result.stdout) {
+      const gitExe = result.stdout.trim().split(/\r?\n/)[0];
+      if (gitExe) {
+        return join(dirname(gitExe), "..", "bin", "bash.exe");
       }
     }
   } catch {
@@ -44,6 +66,17 @@ export function getShellConfig(): { shell: string; args: string[] } {
     const programFilesX86 = process.env["ProgramFiles(x86)"];
     if (programFilesX86) {
       paths.push(`${programFilesX86}\\Git\\bin\\bash.exe`);
+    }
+
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      paths.push(`${localAppData}\\Programs\\Git\\bin\\bash.exe`);
+    }
+
+    // Git for Windows found via git.exe on PATH (covers custom install dirs)
+    const gitBash = findGitBashViaGit();
+    if (gitBash) {
+      paths.push(gitBash);
     }
 
     for (const path of paths) {

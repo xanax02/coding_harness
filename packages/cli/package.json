@@ -1,0 +1,29 @@
+{
+  "name": "@coding-harness/cli",
+  "version": "1.0.0",
+  "description": "Terminal frontend for Coding Harness",
+  "type": "module",
+  "bin": {
+    "coding-harness": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx test/e2e.test.ts"
+  },
+  "dependencies": {
+    "@coding-harness/agent": "*",
+    "@coding-harness/ai-providers": "*",
+    "dotenv": "^18.0.7",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "shx": "^0.3.4",
+    "typescript": "^5.7.3"
+  }
+}
