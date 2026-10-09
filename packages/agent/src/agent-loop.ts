@@ -4,6 +4,7 @@ import {
   EventStream,
   ToolResultMessage,
   validateToolArguments,
+  stream as streamer,
 } from "@coding-harness/ai-providers";
 import {
   AgentContext,
@@ -30,8 +31,8 @@ export function agentLoop(
   prompts: AgentMessage[],
   context: AgentContext,
   config: AgentLoopConfig,
-  signal: AbortSignal | undefined,
-  streamFunction: streamFn,
+  signal?: AbortSignal | undefined,
+  streamFunction?: streamFn,
 ): EventStream<AgentEvent, AgentMessage[]> {
   const stream = createAgentStream();
 
@@ -47,13 +48,45 @@ export function agentLoop(
   return stream;
 }
 
+/**
+ * agent loop for handling retries
+ */
+export function retryAgentLoop(
+  context: AgentContext,
+  config: AgentLoopConfig,
+  signal?: AbortSignal,
+  streamFn?: streamFn,
+) {
+  if (context.messages.length === 0) {
+    throw new Error("Cannot retry, no messages in context");
+  }
+
+  if (context.messages[context.messages.length - 1].role === "assistant") {
+    throw new Error("Cannot retry from assistant message");
+  }
+
+  const stream = createAgentStream();
+  const prompts: AgentMessage[] = [];
+
+  void backgroundRunLoop(
+    prompts,
+    context,
+    config,
+    stream,
+    signal,
+    streamFn,
+  ).then((msg) => stream.end(msg));
+
+  return stream;
+}
+
 export async function backgroundRunLoop(
   prompts: AgentMessage[],
   context: AgentContext,
   config: AgentLoopConfig,
   stream: EventStream<AgentEvent, AgentMessage[]>,
   signal: AbortSignal | undefined,
-  streamFunction: streamFn,
+  streamFunction?: streamFn,
 ): Promise<AgentMessage[]> {
   const newMessages: AgentMessage[] = [...prompts];
   const currentContext: AgentContext = {
@@ -88,7 +121,7 @@ async function runLoop(
   config: AgentLoopConfig,
   signal: AbortSignal | undefined,
   stream: EventStream<AgentEvent, AgentMessage[]>,
-  streamFunction: streamFn,
+  streamFunction?: streamFn,
 ): Promise<void> {
   let firstTurn = true;
 
@@ -194,7 +227,7 @@ async function streamAssistantResponse(
   config: AgentLoopConfig,
   signal: AbortSignal | undefined,
   stream: EventStream<AgentEvent, AgentMessage[]>,
-  streamFunction: streamFn,
+  streamFn?: streamFn,
 ): Promise<AssistantMessage> {
   //apply context transform if present
   //this includes pruning messages and stuff
@@ -217,6 +250,8 @@ async function streamAssistantResponse(
   const apiKey = config?.getApiKey
     ? await config.getApiKey(config.model.provider)
     : undefined;
+
+  const streamFunction = streamFn || streamer;
 
   const response = await streamFunction(config.model, llmContext, {
     ...config,

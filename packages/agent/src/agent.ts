@@ -16,7 +16,7 @@ import {
   streamFn,
   ThinkingLevel,
 } from "./types.js";
-import { agentLoop } from "./agent-loop.js";
+import { agentLoop, retryAgentLoop } from "./agent-loop.js";
 
 interface AgentOptions {
   initialState?: Partial<AgentState>;
@@ -315,14 +315,20 @@ export class Agent {
     let partial: AgentMessage | null = null;
 
     try {
-      const stream = agentLoop(
-        messages,
-        context,
-        config,
-        this.abortController.signal,
-        this.streamFn,
-      );
-      // TODO: handle undefined messages
+      const stream = messages
+        ? agentLoop(
+            messages,
+            context,
+            config,
+            this.abortController.signal,
+            this.streamFn,
+          )
+        : retryAgentLoop(
+            context,
+            config,
+            this.abortController.signal,
+            this.streamFn,
+          );
 
       // handling only those events which changes agent state
       for await (const event of stream) {
