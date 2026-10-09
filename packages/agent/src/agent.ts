@@ -188,6 +188,11 @@ export class Agent {
     return this.runningPrompt ?? Promise.resolve();
   }
 
+  /** abort the current run (LLM stream and running tool); no-op when idle */
+  abort() {
+    this.abortController?.abort();
+  }
+
   reset() {
     this._state.messages = [];
     this._state.isStreaming = false;

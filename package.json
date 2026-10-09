@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "clean": "npm run clean --workspaces --if-present",
-    "build": "npm --prefix packages/ai_providers run build && npm --prefix packages/agent run build",
+    "build": "npm --prefix packages/ai_providers run build && npm --prefix packages/agent run build && npm --prefix packages/cli run build",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck",
     "test": "npm run test --workspaces --if-present"
